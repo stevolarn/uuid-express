@@ -4,15 +4,147 @@ const http = require('http');
 const uuidv7 = require('uuidv7');
 const uuid = require('uuid');
 const express = require('express');
+const fetch = require('node-fetch');
+const pg = require('pg');
+
+const pool = new pg.Pool({
+  user: 'postgres',
+  host: 'localhost',
+  database: 'postgres',
+  password: 'postgres',
+  reconnectTimeoutMillis: 1000, // Retry after 1 second
+});
 
 const app = express();
 var bodyParser = require('body-parser')
+
+// Create a router
+const petsRouter = express.Router();
 
 // create application/json parser
 var jsonParser = bodyParser.json()
 
 // create application/x-www-form-urlencoded parser
 var urlencodedParser = bodyParser.urlencoded({ extended: false })
+
+app.use(jsonParser);
+
+// Create route
+app.post('/storejson', jsonParser, async (req, res) => {
+  const json_field = req.body;
+
+  const id = uuidv7.uuidv7()
+
+  
+
+  const query = `INSERT INTO json_data_table (id, json_field ) VALUES ($1, $2)`;
+  const values = [id, json_field];
+
+  const client = await pool.connect();
+  await client.query(query, values);
+  client.release();
+
+  res.status(201).send('record created successfully!');
+});
+
+// Read route
+app.get('/storejson', async (req, res) => {
+  
+
+  const query = `SELECT * FROM json_data_table`;
+
+  const client = await pool.connect();
+  const data = await client.query(query);
+  client.release();
+
+
+  res.send(data.rows);
+});
+
+const postPetMiddleware = async (req, res, next) => {
+  // Get the JSON data from the request body
+  const petData = req.body;
+
+  console.log(`req: ${req}`)
+
+  // Make a POST request to the Petstore REST API to create a new pet
+  const response = await fetch('https://petstore.swagger.io/v2/pet', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(petData),
+  });
+
+  console.log(response)
+
+  // Check the response status code
+  if (response.status !== 200) {
+    throw new Error(`Failed to create pet in Petstore REST API: ${response.status}`);
+  }
+
+  // Next middleware
+  next();
+};
+
+app.use(postPetMiddleware);
+
+app.post('/petstore', (req, res) => {
+  // Send a success response to the client
+  res.status(200).send('Pet created successfully!');
+});
+
+// // Define a route handler that uses Fetch to make a POST request to an external API
+// app.post('/pets', jsonParser, async (req, res) => {
+//   // Get the JSON data from the request body
+//   const petData = req.body;
+
+//   // Make a POST request to the Petstore REST API to create a new pet
+//   const response = await fetch('https://petstore.swagger.io/v2/pet', {
+//     method: 'POST',
+//     headers: {
+//       'Content-Type': 'application/json',
+//     },
+//     body: JSON.stringify(petData),
+//   });
+
+//   // Check the response status code
+//   if (response.status !== 200) {
+//     throw new Error(`Failed to create pet in Petstore REST API: ${response.status}`);
+//   }
+
+//   // Send a success response to the client
+//   res.status(201).send('Pet created successfully!');
+// });
+
+const getPetsMiddleware =  async (req, res, next) => {
+  // Make a request to the Petstore REST API to get all pets
+  const response = await fetch('https://petstore.swagger.io/v2/pet/9223372036854775807');
+
+  // Check the response status code
+  if (response.status !== 200) {
+    throw new Error(`Failed to get pets from Petstore REST API: ${response.status}`);
+  }
+
+  // Parse the response body
+  const pets = await response.json();
+
+  // Attach the pets data to the request object
+  req.pets = pets;
+
+  // Next middleware
+  next();
+};
+
+app.use(getPetsMiddleware);
+
+app.get('/petstore', (req, res) => {
+  // Get the pets data from the request object
+  const pets = req.pets;
+
+  // Send the pets data to the client
+  res.send(pets);
+});
 
 // Validate
 app.post('/uuid/validate', jsonParser, function (req, res) {

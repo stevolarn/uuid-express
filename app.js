@@ -32,6 +32,15 @@ var urlencodedParser = bodyParser.urlencoded({ extended: false })
 app.use(jsonParser);
 app.use(morgan('dev'))
 
+// Define an error-handling middleware function
+app.use(function(err, req, res, next) {
+  // Log the error
+  console.error(err.stack);
+
+  // Send a response to the client
+  res.status(500).send('Something went wrong!');
+});
+
 // Create route
 app.post('/storejson', jsonParser, async (req, res) => {
   const json_field = req.body;
@@ -63,7 +72,7 @@ app.get('/storejson', async (req, res) => {
 });
 
 // Read route
-app.get('/storejson/:uuid', async (req, res) => {
+app.get('/storejson/:uuid', async (req, res, next) => {
   
   try{
 
@@ -75,10 +84,15 @@ app.get('/storejson/:uuid', async (req, res) => {
     const data = await client.query(query);
     client.release();
 
-    res.send(data.rows);
+    if(data.rows.length === 0){
+      res.status(404).json({success:false,message:"uuid not found"});
+    }
 
-  } catch (error){
-    console.error(error)
+    res.send(data.rows);
+    
+  } catch (err){
+    console.error(err)
+    next(err)
   }
 
 });
@@ -88,25 +102,26 @@ const postPetMiddleware = async (req, res, next) => {
   
   try{
 
-  const petData = req.body;
+    const petData = req.body;
 
-  // Make a POST request to the Petstore REST API to create a new pet
-  const response = await fetch('https://petstore.swagger.io/v2/pet', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(petData),
-  });
+    // Make a POST request to the Petstore REST API to create a new pet
+    const response = await fetch('https://petstore.swagger.io/v2/pet', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(petData),
+    });
 
-  // Check the response status code
-  if (response.status !== 200) {
-    throw new Error(`Failed to create pet in Petstore REST API: ${response.status}`);
-  }
+    // // Check the response status code
+    // if (response.status !== 200) {
+    //   throw new Error(`Failed to create pet in Petstore REST API: ${response.status}`);
+    // }
 
-  } catch (error){
+  } catch (err){
     //const errorBody = await error.response.text();
-    console.error(`Error body: ${error}`);
+    console.error(`Error body: ${err}`);
+    next(err)
   }
 
   // Next middleware
@@ -150,10 +165,10 @@ const getPetsMiddleware =  async (req, res, next) => {
     // Make a request to the Petstore REST API to get all pets
     const response = await fetch(`https://petstore.swagger.io/v2/pet/${id}`);
 
-    // Check the response status code
-    if (response.status !== 200) {
-      throw new Error(`Failed to get pets from Petstore REST API: ${response.status}`);
-    }
+    // // Check the response status code
+    // if (response.status !== 200) {
+    //   throw new Error(`Failed to get pets from Petstore REST API: ${response.status}`);
+    // }
 
     // Parse the response body
     const pets = await response.json();
@@ -161,9 +176,10 @@ const getPetsMiddleware =  async (req, res, next) => {
     // Attach the pets data to the request object
     req.pets = pets;
 
-  } catch (error){
+  } catch (err){
     //const errorBody = await error.response.text();
-    console.error(`Error body: ${error}`);
+    console.error(`Error body: ${err}`);
+    next(err)
   }
 
   // Next middleware
